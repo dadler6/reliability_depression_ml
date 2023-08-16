@@ -1371,3 +1371,71 @@ def feature_lr_with_group(
     lr_df.loc[lr_df['lr_pvalue'] < lr_df.alpha_bonf, 'lr_bonf_sig'] = 1
         
     return lr_df
+
+def sensed_behavior_distributions(
+    df, features, group_cols
+):
+    """
+    Get distributions of sensed-behaviors (mean, standard deviation)
+
+    :param df: pd.DataFrame, dataframe (entire study)
+    :param features: list<str>, the features used for modeling
+    :param group-cols: list<str>, columns to run analysis over
+
+    :return lr_df: pd.DataFrame, the df with added lr values
+    """
+    dist_dict = dict()
+
+    # Add entire study to group_cols
+    group_cols = ['Entire study'] + group_cols
+
+    # Impute and scale data
+    df[features] = IterativeImputer(
+        max_iter=1000).fit_transform(df[features])
+    # Standardize
+    df[features] = StandardScaler().fit_transform(df[features])
+
+    for g in group_cols:
+        # Filter to groups with >= 15 IDs
+        study_ids_group = df[['study_id', g]].drop_duplicates()
+        # Filter to groups with >=15 study IDs 
+        # as per Seyyed-Kalantari et al. 2021
+        val_counts = study_ids_group[g].value_counts()
+        val_counts = val_counts.loc[val_counts >= 15]
+        keep_groups = val_counts.index
+
+        # Get study IDs to keep
+        df_keep = df.loc[
+            df[g].isin(keep_groups), :].copy()
+
+        # Make df
+        dist_df = pd.DataFrame(
+            index=features, columns=keep_groups)
+
+        # Go through each feature
+        for f in features:
+            # Go through each value
+            for v in keep_groups:
+                # Create empty string
+                curr_str = ''
+                # Filter
+                temp = df_keep.loc[(df_keep[g] == v), :]
+                # Get median
+                curr_str += str(temp[f].median().round(2))
+                curr_str += ' ('
+                # Get 25th percentile
+                curr_str += str(temp[f].quantile(0.25).round(2))
+                curr_str += ' to '
+                # Get 75th percentile
+                curr_str += str(temp[f].quantile(0.75).round(2))
+                curr_str += ')'
+
+                # Set value
+                dist_df.loc[f, v] = curr_str
+
+        # Add to dict
+        dist_dict[g] = dist_df
+
+            
+   # Return
+    return dist_dict
